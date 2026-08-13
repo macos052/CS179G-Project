@@ -35,3 +35,16 @@ FROM hashtags_view
 GROUP BY post_date, hashtag
 ORDER BY post_date DESC, count DESC
 """)
+
+daily_ranking.show(20)
+
+# Total Hashtags Used per Day (Daily Trend)
+spark.sql("""
+SELECT
+    post_date,
+    COUNT(hashtag) AS total_hashtags_used,
+    COUNT(DISTINCT hashtag) AS unique_hashtags
+FROM hashtags_view
+GROUP BY post_date
+ORDER BY post_date ASC
+""").show()
