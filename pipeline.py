@@ -21,3 +21,17 @@ hashtags = spark.sql("""
 """)
 
 hashtags.cache()
+
+# Register as a temporary view
+hashtags.createOrReplaceTempView("hashtags_view")
+
+# Hashtag counts per day (daily ranking)
+daily_ranking = spark.sql("""
+SELECT
+    post_date,
+    hashtag,
+    COUNT(*) AS count
+FROM hashtags_view
+GROUP BY post_date, hashtag
+ORDER BY post_date DESC, count DESC
+""")
