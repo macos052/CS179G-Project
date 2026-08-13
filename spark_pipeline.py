@@ -36,6 +36,8 @@ GROUP BY post_date, hashtag
 ORDER BY post_date DESC, count DESC
 """)
 
+daily_ranking.write.mode("overwrite").parquet("hashtags_ranked.parquet")
+
 daily_ranking.show(20)
 
 # Total Hashtags Used per Day (Daily Trend)
