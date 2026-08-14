@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 
 spark = SparkSession.builder \
     .appName("BlueskyHashtagPipeline") \
+    .config("spark.jars", "mysql-connector-j-26.7.0.jar") \
     .getOrCreate()
 
 df = spark.read.json("posts_deduped.jsonl")
