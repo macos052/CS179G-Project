@@ -5,7 +5,7 @@ spark = SparkSession.builder \
     .config("spark.jars", "mysql-connector-j-26.7.0.jar") \
     .getOrCreate()
 
-df = spark.read.json("posts_deduped.jsonl")
+df = spark.read.json("/home/cs179g/cs179_project_group_2/dataset.jsonl")
 
 df.createOrReplaceTempView("posts")
 
