@@ -144,3 +144,8 @@ vite.config.ts.timestamp-*
 
 # Other
 .DS_Store
+
+# Parquet output
+*.parquet
+hashtags_ranked.parquet/
+categorized_hashtags.parquet/
