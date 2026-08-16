@@ -144,3 +144,5 @@ vite.config.ts.timestamp-*
 
 # Other
 .DS_Store
+.venv/
+hashtags_ranked.parquet/
