@@ -15,7 +15,7 @@ daily_ranking_categorized = spark.sql("""
 SELECT
     post_date,
     hashtag,
-    count AS post_count,
+    post_count
 
     CASE
         WHEN hashtag IN (
