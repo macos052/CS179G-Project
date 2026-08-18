@@ -54,33 +54,69 @@ ORDER BY post_date ASC
 """).show()
 
 #  Categorization 
-category_map = {
-    "politics": ["politics", "election", "senate", "congress", "biden", "trump", "government"],
-    "sports": ["sports", "football", "basketball", "nba", "nfl", "soccer"],
-    "tech": ["tech", "programming", "python", "javascript", "ai", "cybersecurity", "opensource", "webdev"],
-    "entertainment": ["movies", "music", "scifi", "fantasy", "books", "writing", "poetry"],
-    "art": ["art", "digitalart", "illustration", "photography", "design", "anime", "manga"],
-    "lifestyle": ["food", "cooking", "travel", "fitness", "health", "fashion", "beauty"],
-    "business": ["business", "economy", "finance", "crypto", "realestate"],
-    "news": ["news", "journalism"],
-    "gaming": ["gaming", "gamedev", "indiegamedev", "nintendo", "playstation"],
-    "animals": ["cats", "dogs", "pets"],
-}
+daily_ranking.createOrReplaceTempView("daily_ranking")
 
-def categorize_expr():
-    result_expr = None
-    for category, keywords in category_map.items():
-        cond = None
-        for kw in keywords:
-            c = col("hashtag").contains(kw)
-            cond = c if cond is None else (cond | c)
-        if result_expr is None:
-            result_expr = when(cond, category)
-        else:
-            result_expr = result_expr.when(cond, category)
-    return result_expr.otherwise("uncategorized")
+daily_ranking_categorized = spark.sql("""
+SELECT
+    post_date,
+    hashtag,
+    post_count,
+    CASE
+        WHEN hashtag IN (
+            'art','digitalart','illustration','photography',
+            'naturephotography','design','architecture','manga','anime'
+        ) THEN 'art'
 
-daily_ranking_categorized = daily_ranking.withColumn("category", categorize_expr())
+        WHEN hashtag IN (
+            'gaming','gamedev','indiegamedev','nintendo',
+            'playstation','boardgames'
+        ) THEN 'gaming'
+
+        WHEN hashtag IN (
+            'tech','ai','programming','python','javascript',
+            'cybersecurity','opensource','webdev'
+        ) THEN 'tech'
+
+        WHEN hashtag IN (
+            'science','space','astronomy','climate'
+        ) THEN 'science'
+
+        WHEN hashtag IN (
+            'books','booksky','writing','writingcommunity',
+            'poetry','history'
+        ) THEN 'books_writing'
+
+        WHEN hashtag IN (
+            'music','movies','scifi','fantasy','podcasts','vinyl'
+        ) THEN 'entertainment'
+
+        WHEN hashtag IN (
+            'news','politics','journalism'
+        ) THEN 'news_politics'
+
+        WHEN hashtag IN (
+            'crypto','finance','economy','realestate','business'
+        ) THEN 'finance'
+
+        WHEN hashtag IN (
+            'sports','football','basketball','fitness'
+        ) THEN 'sports'
+
+        WHEN hashtag IN (
+            'cats','dogs','pets','nature','travel','cooking',
+            'food','gardening','fashion','beauty','cars'
+        ) THEN 'lifestyle'
+
+        WHEN hashtag IN (
+            'memes','funny'
+        ) THEN 'humor'
+
+        ELSE 'other'
+    END AS category
+FROM daily_ranking
+""")
+
+daily_ranking_categorized.createOrReplaceTempView("categorized_hashtags")
 daily_ranking_categorized.show(20)
 
 # --- Write to MySQL ---
@@ -101,4 +137,3 @@ daily_ranking_categorized.coalesce(1) \
 
 
 print("Write to MySQL complete.")
-
