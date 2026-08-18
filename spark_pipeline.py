@@ -119,6 +119,14 @@ FROM daily_ranking
 daily_ranking_categorized.createOrReplaceTempView("categorized_hashtags")
 daily_ranking_categorized.show(20)
 
+# Category activity across days
+spark.sql("""
+SELECT category, post_date, SUM(post_count) AS total_activity
+FROM categorized_hashtags
+GROUP BY category, post_date
+ORDER BY category, post_date
+""").show(50)
+
 # --- Write to MySQL ---
 mysql_url = "jdbc:mysql://localhost:3306/bluesky_hashtags"
 mysql_properties = {
