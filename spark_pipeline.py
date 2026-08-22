@@ -75,7 +75,9 @@ ORDER BY post_date ASC
 
 #  Categorization 
 # Clean the variants (like ai!) before categorizing them
-daily_ranking_clean = daily_ranking.withColumn("hashtag", regexp_replace(col("hashtag"), "[^a-zA-Z0-9_]", ""))
+daily_ranking_clean = daily_ranking \
+  .withColumn("hashtag", regexp_replace(col("hashtag"), "[^a-zA-Z0-9_]", "")) \
+  .withColumn("hashtag", trim(regexp_replace(col("hashtag"), "(^_+|_+$)", "")))
 daily_ranking_clean.createOrReplaceTempView("daily_ranking")
 
 daily_ranking_categorized = spark.sql("""
