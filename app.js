@@ -25,7 +25,7 @@ app.get('/', async(req, res) => {
         const [categories] = await db.query(`
             SELECT DISTINCT category FROM hashtags ORDER BY category
         `);
-        
+
         res.render('index', {topHashtags, categories});
     }
     catch(err){
@@ -34,4 +34,45 @@ app.get('/', async(req, res) => {
     }
 });
 
+app.get('/api/trending', async(req, res) => {
+    const category = req.query.category;
+    const postDate = req.query.postDate;
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+
+    try{
+        let SQL = `
+            SELECT hashtag, post_date, category, SUM(post_count) AS total_count
+            FROM hashtags
+            WHERE 1=1
+        `;
+        
+        let parameters = [];
+
+        if(category){
+            SQL = SQL.concat(" ", "AND category = ?");
+            parameters.push(category);
+        }
+        
+        if(postDate){
+            SQL = SQL.concat(" ", "AND post_date = ?");
+            parameters.push(postDate);
+        }
+
+        SQL = SQL.concat("\n", `
+            GROUP BY hashtag, post_date, category
+            ORDER BY total_count DESC
+            LIMIT ?
+        `);
+        
+        parameters.push(limit);
+
+        const [result] = await db.query(SQL, parameters);
+
+        res.json(result);
+    }
+    catch(err){
+        console.error(err);
+        res.status(500).send('Something went wrong');
+    }
+});
 app.listen(3000);
