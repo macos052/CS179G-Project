@@ -74,7 +74,9 @@ ORDER BY post_date ASC
 """).show()
 
 #  Categorization 
-daily_ranking.createOrReplaceTempView("daily_ranking")
+# Clean the variants (like ai!) before categorizing them
+daily_ranking_clean = daily_ranking.withColumn("hashtag", regexp_replace(col("hashtag"), "[^a-zA-Z0-9_]", ""))
+daily_ranking_clean.createOrReplaceTempView("daily_ranking")
 
 daily_ranking_categorized = spark.sql("""
 SELECT
@@ -155,21 +157,15 @@ mysql_properties = {
     "driver": "com.mysql.cj.jdbc.Driver"
 }
 
-# 1. Clean the text fields first
-cleaned_df = daily_ranking_categorized \
-    .withColumn("hashtag", lower(trim(col("hashtag")))) \
-    .withColumn("hashtag", regexp_replace(col("hashtag"), "[^a-zA-Z0-9_]", "")) \
-    .filter(col("hashtag") != "")
-
-# 2. Aggregate by (post_date, hashtag) to guarantee unique primary keys for MySQL
-final_df = cleaned_df \
+# Aggregate by (post_date, hashtag) to guarantee unique primary keys for MySQL
+final_df = daily_ranking_categorized \
     .groupBy("post_date", "hashtag") \
     .agg(
         sum("post_count").alias("post_count"),
         first("category").alias("category")  # Picks one category if a hashtag spans multiple
     )
 
-# 3. Write to MySQL
+# Write to MySQL
 final_df.coalesce(1) \
     .write \
     .mode("overwrite") \
