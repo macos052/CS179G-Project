@@ -1,6 +1,4 @@
-DROP TABLE IF EXISTS hashtags;
-
-CREATE TABLE hashtags (
+CREATE TABLE IF NOT EXISTS hashtags (
     id INT AUTO_INCREMENT PRIMARY KEY,
     post_date DATE NOT NULL,
     hashtag VARCHAR(255) NOT NULL,
