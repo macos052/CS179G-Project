@@ -151,3 +151,6 @@ hashtags_ranked.parquet/
 *.parquet
 hashtags_ranked.parquet/
 categorized_hashtags.parquet/
+
+# data/txt files
+*.txt
