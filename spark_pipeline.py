@@ -151,6 +151,39 @@ GROUP BY category, post_date
 ORDER BY category, post_date
 """).show(50)
 
+# --- Export CSVs for reporting and per-category plotting ---
+import csv
+ 
+category_activity_rows = spark.sql("""
+    SELECT category, post_date, SUM(post_count) AS total_activity
+    FROM categorized_hashtags
+    GROUP BY category, post_date
+    ORDER BY category, post_date
+""").collect()
+ 
+with open("category_activity.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["category", "post_date", "total_activity"])
+    for row in category_activity_rows:
+        writer.writerow([row["category"], row["post_date"], row["total_activity"]])
+ 
+print(f"Exported {len(category_activity_rows)} rows to category_activity.csv")
+ 
+top_hashtags_rows = spark.sql("""
+    SELECT hashtag, category, SUM(post_count) AS total_count
+    FROM categorized_hashtags
+    GROUP BY hashtag, category
+    ORDER BY total_count DESC
+""").collect()
+ 
+with open("top_hashtags.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["hashtag", "category", "total_count"])
+    for row in top_hashtags_rows:
+        writer.writerow([row["hashtag"], row["category"], row["total_count"]])
+ 
+print(f"Exported {len(top_hashtags_rows)} rows to top_hashtags.csv")
+ 
 # --- Write to MySQL ---
 mysql_url = f"jdbc:mysql://{os.getenv('MYSQL_HOST')}:{os.getenv('MYSQL_PORT')}/{os.getenv('MYSQL_DATABASE')}"
 mysql_properties = {
