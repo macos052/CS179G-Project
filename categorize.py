@@ -13,9 +13,9 @@ daily_ranking.createOrReplaceTempView("daily_ranking")
 # Categorize hashtags using Spark SQL CASE WHEN
 daily_ranking_categorized = spark.sql("""
 SELECT
-    post_date,
     hashtag,
-    post_count
+    post_date,
+    post_count,
 
     CASE
         WHEN hashtag IN (

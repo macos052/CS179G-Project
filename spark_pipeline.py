@@ -1,5 +1,9 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when
+from pyspark.sql.functions import col, lower, trim, regexp_replace, sum, first
+
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 spark = SparkSession.builder \
     .appName("BlueskyHashtagPipeline") \
@@ -12,14 +16,30 @@ df.createOrReplaceTempView("posts")
 
 # Extract hashtags
 hashtags = spark.sql("""
-  SELECT 
-    p.uri,
+SELECT
+    LOWER(
+        TRANSLATE(
+            TRIM(feature.tag),
+            'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ',
+            'aaaaaeeeeiiiiooooouuuucaaaaaeeeeiiiiooooouuuuc'
+        )
+    ) AS hashtag,
     TO_DATE(p.record.createdAt) AS post_date,
-    LOWER(feature.tag) AS hashtag
-  FROM posts p
-  LATERAL VIEW explode(record.facets) AS facet
-  LATERAL VIEW explode(facet.features) AS feature
-  WHERE feature.`$type` = 'app.bsky.richtext.facet#tag'
+    COUNT(DISTINCT p.uri) AS post_count
+FROM posts p
+LATERAL VIEW explode(record.facets) AS facet
+LATERAL VIEW explode(facet.features) AS feature
+WHERE feature.`$type` = 'app.bsky.richtext.facet#tag'
+  AND feature.tag IS NOT NULL
+GROUP BY 
+    LOWER(
+        TRANSLATE(
+            TRIM(feature.tag),
+            'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ',
+            'aaaaaeeeeiiiiooooouuuucaaaaaeeeeiiiiooooouuuuc'
+        )
+    ), 
+    TO_DATE(p.record.createdAt)
 """)
 
 hashtags.cache()
@@ -53,13 +73,17 @@ GROUP BY post_date
 ORDER BY post_date ASC
 """).show()
 
-#  Categorization
-daily_ranking.createOrReplaceTempView("daily_ranking")
+#  Categorization 
+# Clean the variants (like ai!) before categorizing them
+daily_ranking_clean = daily_ranking \
+  .withColumn("hashtag", regexp_replace(col("hashtag"), "[^a-zA-Z0-9_]", "")) \
+  .withColumn("hashtag", trim(regexp_replace(col("hashtag"), "(^_+|_+$)", "")))
+daily_ranking_clean.createOrReplaceTempView("daily_ranking")
 
 daily_ranking_categorized = spark.sql("""
 SELECT
-    post_date,
     hashtag,
+    post_date,
     post_count,
     CASE
         WHEN hashtag IN (
@@ -119,22 +143,73 @@ FROM daily_ranking
 daily_ranking_categorized.createOrReplaceTempView("categorized_hashtags")
 daily_ranking_categorized.show(20)
 
+# Category activity across days
+spark.sql("""
+SELECT category, post_date, SUM(post_count) AS total_activity
+FROM categorized_hashtags
+GROUP BY category, post_date
+ORDER BY category, post_date
+""").show(50)
+
+# --- Export CSVs for reporting and per-category plotting ---
+import csv
+ 
+category_activity_rows = spark.sql("""
+    SELECT category, post_date, SUM(post_count) AS total_activity
+    FROM categorized_hashtags
+    GROUP BY category, post_date
+    ORDER BY category, post_date
+""").collect()
+ 
+with open("category_activity.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["category", "post_date", "total_activity"])
+    for row in category_activity_rows:
+        writer.writerow([row["category"], row["post_date"], row["total_activity"]])
+ 
+print(f"Exported {len(category_activity_rows)} rows to category_activity.csv")
+ 
+top_hashtags_rows = spark.sql("""
+    SELECT hashtag, category, SUM(post_count) AS total_count
+    FROM categorized_hashtags
+    GROUP BY hashtag, category
+    ORDER BY total_count DESC
+""").collect()
+ 
+with open("top_hashtags.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["hashtag", "category", "total_count"])
+    for row in top_hashtags_rows:
+        writer.writerow([row["hashtag"], row["category"], row["total_count"]])
+ 
+print(f"Exported {len(top_hashtags_rows)} rows to top_hashtags.csv")
+ 
 # --- Write to MySQL ---
-mysql_url = "jdbc:mysql://localhost:3306/bluesky_hashtags"
+mysql_url = f"jdbc:mysql://{os.getenv('MYSQL_HOST')}:{os.getenv('MYSQL_PORT')}/{os.getenv('MYSQL_DATABASE')}"
 mysql_properties = {
-    "user": "root",
-    "password": "isabelas",
+    "user": os.getenv("MYSQL_USER"),
+    "password": os.getenv("MYSQL_PASSWORD"),
     "driver": "com.mysql.cj.jdbc.Driver"
 }
 
+# Aggregate by (post_date, hashtag) to guarantee unique primary keys for MySQL
+final_df = daily_ranking_categorized \
+    .groupBy("post_date", "hashtag") \
+    .agg(
+        sum("post_count").alias("post_count"),
+        first("category").alias("category")  # Picks one category if a hashtag spans multiple
+    )
 
-daily_ranking_categorized.coalesce(1) \
+# Write to MySQL
+final_df.coalesce(1) \
     .write \
     .mode("overwrite") \
     .option("truncate", "true") \
     .jdbc(url=mysql_url, table="hashtags", properties=mysql_properties)
 
-
-
 print("Write to MySQL complete.")
 
+# Verify by reading it back
+verify_df = spark.read.jdbc(url=mysql_url, table="hashtags", properties=mysql_properties)
+print(f"Rows in MySQL table: {verify_df.count()}")
+verify_df.show(10)
