@@ -26,7 +26,11 @@ app.get('/', async(req, res) => {
             SELECT DISTINCT category FROM hashtags ORDER BY category
         `);
 
-        res.render('index', {topHashtags, categories});
+        const [dates] = await db.query(`
+            SELECT DISTINCT post_date FROM hashtags ORDER BY post_date DESC
+        `);
+
+        res.render('index', {topHashtags, categories, dates});
     }
     catch(err){
         console.error(err);
