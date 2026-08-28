@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/macos052/CS179G-Project#readme",
   "dependencies": {
+    "chart.js": "^4.5.1",
     "dotenv": "^17.4.2",
     "ejs": "^6.0.1",
     "express": "^5.2.1",

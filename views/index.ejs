@@ -61,6 +61,23 @@
         <% }); %>
     </select>
 
+    <br><br>
+
+    <label for="dateSelect">
+        <strong>Select a Date:</strong>
+    </label>
+
+    <select id="dateSelect">
+        <option value="">All Dates</option>
+
+        <% dates.forEach(item => { %>
+            <% const date = new Date(item.post_date).toISOString().substring(0, 10); %>
+            <option value="<%= date %>">
+                <%= date %>
+            </option>
+        <% }); %>
+    </select>
+
     <h2 id="tableTitle">Top 10 Hashtags</h2>
 
     <table>
@@ -88,9 +105,41 @@
     </table>
 
 
+
+    <hr style="margin-top: 50px;">
+
+    
+    <h2 id="trendTitle">Category Activity Over Time</h2>
+
+    <p id="trendMessage">
+        Select a category to view its recent activity trend.
+    </p>
+
+    <div style="max-width: 900px; height: 400px; margin-bottom: 50px;">
+        <canvas id="trendChart"></canvas>
+    </div>
+
+    <h2>Category Popularity</h2>
+
+
+    <label>
+        <input type="checkbox" id="hideOther">
+        Hide "Other"
+    </label>
+
+    <div style="max-width: 900px; height: 450px; margin-top: 20px;">
+        <canvas id="categoryChart"></canvas>
+    </div>
+
+    <script src="/js/chart.umd.js"></script>
+
     <script>
+
         const categorySelect =
             document.getElementById("categorySelect");
+
+        const dateSelect =
+            document.getElementById("dateSelect");
 
         const results =
             document.getElementById("results");
@@ -99,9 +148,10 @@
             document.getElementById("tableTitle");
 
 
-        categorySelect.addEventListener("change", async function () {
+        async function loadTrending() {
 
             const category = categorySelect.value;
+            const postDate = dateSelect.value;
 
             try {
 
@@ -112,19 +162,27 @@
                         encodeURIComponent(category);
                 }
 
-                const response = await fetch(url);
+                if (postDate) {
+                    url += "&postDate=" +
+                        encodeURIComponent(postDate);
+                }
 
+                const response = await fetch(url);
                 const data = await response.json();
 
                 results.innerHTML = "";
 
+                let title = "Top 10 Hashtags";
+
                 if (category) {
-                    tableTitle.textContent =
-                        "Top 10 Hashtags - " + category;
-                } else {
-                    tableTitle.textContent =
-                        "Top 10 Hashtags";
+                    title += " - " + category;
                 }
+
+                if (postDate) {
+                    title += " - " + postDate;
+                }
+
+                tableTitle.textContent = title;
 
                 if (data.length === 0) {
                     results.innerHTML =
@@ -161,8 +219,224 @@
                 results.innerHTML =
                     "<tr><td colspan='4'>Error loading data.</td></tr>";
             }
+        }
 
-        });
+
+        categorySelect.addEventListener(
+            "change",
+            async function () {
+                await loadTrending();
+                await loadCategoryTrend();
+            }
+        );
+
+        dateSelect.addEventListener(
+            "change",
+            loadTrending
+        );
+
+
+
+        // ----------------------------
+        // Category Popularity Chart
+        // ----------------------------
+
+        const hideOther =
+            document.getElementById("hideOther");
+
+        const categoryChartCanvas =
+            document.getElementById("categoryChart");
+
+        let categoryChart;
+        let categoryTotals = [];
+
+
+        async function loadCategoryChart() {
+
+            const response =
+                await fetch("/api/category-totals");
+
+            categoryTotals =
+                await response.json();
+
+            drawCategoryChart();
+        }
+
+
+        function drawCategoryChart() {
+
+            let chartData = categoryTotals;
+
+            if (hideOther.checked) {
+                chartData = categoryTotals.filter(
+                    item => item.category !== "other"
+                );
+            }
+
+            const labels =
+                chartData.map(
+                    item => item.category
+                );
+
+            const totals =
+                chartData.map(
+                    item => Number(item.total_activity)
+                );
+
+            if (categoryChart) {
+                categoryChart.destroy();
+            }
+
+            categoryChart = new Chart(
+                categoryChartCanvas,
+                {
+                    type: "bar",
+
+                    data: {
+                        labels: labels,
+
+                        datasets: [{
+                            label: "Total Activity",
+                            data: totals
+                        }]
+                    },
+
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: "Total Hashtag Activity by Category"
+                            }
+                        }
+                    }
+                }
+            );
+        }
+
+
+        hideOther.addEventListener(
+            "change",
+            drawCategoryChart
+        );
+
+
+        loadCategoryChart();
+
+
+
+        // ----------------------------
+        // Category Trend Line Chart
+        // ----------------------------
+
+        const trendChartCanvas =
+            document.getElementById("trendChart");
+
+        const trendTitle =
+            document.getElementById("trendTitle");
+
+        const trendMessage =
+            document.getElementById("trendMessage");
+
+        let trendChart;
+
+
+        async function loadCategoryTrend() {
+
+            const category = categorySelect.value;
+
+            if (!category) {
+
+                trendMessage.textContent =
+                    "Select a category to view its recent activity trend.";
+
+                trendTitle.textContent =
+                    "Category Activity Over Time";
+
+                if (trendChart) {
+                    trendChart.destroy();
+                    trendChart = null;
+                }
+
+                return;
+            }
+
+            const response = await fetch(
+                "/api/category-trend?category=" +
+                encodeURIComponent(category)
+            );
+
+            const data = await response.json();
+
+            // Show only the most recent 30 dates
+            const recentData = data.slice(-30);
+
+            const labels = recentData.map(item =>
+                String(item.post_date).substring(0, 10)
+            );
+
+            const activity = recentData.map(item =>
+                Number(item.total_activity)
+            );
+
+            trendTitle.textContent =
+                category + " Activity Over Time";
+
+            trendMessage.textContent =
+                "Showing the most recent 30 available dates.";
+
+            if (trendChart) {
+                trendChart.destroy();
+            }
+
+            trendChart = new Chart(
+                trendChartCanvas,
+                {
+                    type: "line",
+
+                    data: {
+                        labels: labels,
+
+                        datasets: [{
+                            label: "Total Activity",
+                            data: activity,
+                            tension: 0.2
+                        }]
+                    },
+
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: "Total Activity"
+                                }
+                            },
+
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: "Date"
+                                }
+                            }
+                        }
+                    }
+                }
+            );
+        }
+
     </script>
 
 </body>
