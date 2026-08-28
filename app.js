@@ -53,8 +53,8 @@ app.get('/api/trending', async(req, res) => {
         let SQL = `
             SELECT 
                 hashtag,
-                post_date, category,
-                SUM(post_count) AS total_count,
+                category,
+                SUM(post_count) AS total_count
                 ${dateColumn}
             FROM hashtags
             WHERE 1=1
@@ -63,20 +63,20 @@ app.get('/api/trending', async(req, res) => {
         let parameters = [];
 
         if(category){
-            SQL = SQL.concat(" ", "AND category = ?");
+            SQL += " AND category = ?";
             parameters.push(category);
         }
         
         if(postDate){
-            SQL = SQL.concat(" ", "AND post_date = ?");
+            SQL += " AND post_date = ?";
             parameters.push(postDate);
         }
 
-        SQL = SQL.concat("\n", `
-            GROUP BY hashtag, post_date, category
+        SQL += `
+            GROUP BY hashtag, category
             ORDER BY total_count DESC
             LIMIT ?
-        `);
+        `;
         
         parameters.push(limit);
 
