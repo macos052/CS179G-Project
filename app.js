@@ -75,4 +75,47 @@ app.get('/api/trending', async(req, res) => {
         res.status(500).send('Something went wrong');
     }
 });
+
+app.get('/api/posts', async(req, res) => {
+    const hashtag = req.query.hashtag;
+    const category = req.query.category;
+    const postDate = req.query.postDate;
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+
+    if(!hashtag){
+        return res.status(400).json({ error: 'hashtag is required' });
+    }
+
+    try{
+        let SQL = `
+            SELECT uri, author_handle, post_text, hashtag, post_date, category
+            FROM post_hashtags
+            WHERE hashtag = ?
+        `;
+
+        let parameters = [hashtag];
+
+        if(category){
+            SQL += " AND category = ?";
+            parameters.push(category);
+        }
+        
+        if(postDate){
+            SQL += " AND post_date = ?";
+            parameters.push(postDate);
+        }
+
+        SQL += " LIMIT ?";
+        parameters.push(limit);
+
+        const [result] = await db.query(SQL, parameters);
+
+        res.json(result);
+    }
+    catch(err){
+        console.error(err);
+        res.status(500).send('Something went wrong');
+    }
+});
+
 app.listen(3000);
