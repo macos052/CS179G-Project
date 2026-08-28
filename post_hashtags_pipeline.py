@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lower, trim, regexp_replace, sum, first
+from pyspark.sql.functions import coalesce, lit
 
 from dotenv import load_dotenv
 import os
@@ -61,3 +62,22 @@ category_lookup = spark.read.jdbc(
     table="(SELECT DISTINCT hashtag, category FROM hashtags) AS lookup", # small DataFrame with just two columns: hashtag and category, one row per unique hashtag
     properties=mysql_properties
 )
+
+post_hashtags_final = hashtags_clean.join(
+    category_lookup,
+    on="hashtag",
+    how="left"
+).withColumn("category", coalesce(col("category"), lit("other"))) # handles null category result from left join into 'other'
+
+# Write to MySQL
+post_hashtags_final.coalesce(1) \
+    .write \
+    .mode("overwrite") \
+    .option("truncate", "true") \
+    .jdbc(url=mysql_url, table="post_hashtags", properties=mysql_properties)
+
+print("Write to post_hashtags complete.")
+
+verify_df = spark.read.jdbc(url=mysql_url, table="post_hashtags", properties=mysql_properties)
+print(f"Rows in post_hashtags table: {verify_df.count()}")
+verify_df.show(5)
