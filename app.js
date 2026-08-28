@@ -12,6 +12,8 @@ app.set('view engine', 'ejs');
 // Explicitly set the directory for your view files
 app.set('views', path.join(__dirname, 'views'));
 
+app.use(express.static(path.join(__dirname, 'public')));
+
 app.get('/', async(req, res) => {
     try{
         const [topHashtags] = await db.query(`
@@ -44,8 +46,16 @@ app.get('/api/trending', async(req, res) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : 10;
 
     try{
+        const dateColumn = postDate
+            ? ", MIN(post_date) AS post_date"
+            : ", NULL AS post_date";
+        
         let SQL = `
-            SELECT hashtag, post_date, category, SUM(post_count) AS total_count
+            SELECT 
+                hashtag,
+                post_date, category,
+                SUM(post_count) AS total_count,
+                ${dateColumn}
             FROM hashtags
             WHERE 1=1
         `;
@@ -117,6 +127,60 @@ app.get('/api/posts', async(req, res) => {
         res.json(result);
     }
     catch(err){
+        console.error(err);
+        res.status(500).send('Something went wrong');
+    }
+});
+
+// Total activity for each category
+app.get('/api/category-totals', async(req, res) => {
+
+    try {
+
+        const [result] = await db.query(`
+            SELECT
+                category,
+                SUM(post_count) AS total_activity
+            FROM hashtags
+            GROUP BY category
+            ORDER BY total_activity DESC
+        `);
+
+        res.json(result);
+
+    }
+    catch(err){
+        console.error(err);
+        res.status(500).send('Something went wrong');
+    }
+});
+
+// Daily activity trend for a selected category
+app.get('/api/category-trend', async(req, res) => {
+
+    const category = req.query.category;
+
+    if(!category){
+        return res.status(400).json({
+            error: 'Category is required'
+        });
+    }
+
+    try {
+        const [result] = await db.query(`
+            SELECT
+                post_date,
+                SUM(post_count) AS total_activity
+            FROM hashtags
+            WHERE category = ?
+            GROUP BY post_date
+            ORDER BY post_date ASC
+        `, [category]);
+
+        res.json(result);
+
+    }
+    catch(err) {
         console.error(err);
         res.status(500).send('Something went wrong');
     }
