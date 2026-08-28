@@ -42,3 +42,22 @@ hashtags_clean = hashtags \
   .withColumn("hashtag", regexp_replace(col("hashtag"), "[^a-zA-Z0-9_]", "")) \
   .withColumn("hashtag", trim(regexp_replace(col("hashtag"), "(^_+|_+$)", "")))
 hashtags_clean.createOrReplaceTempView("post_hashtags_clean")
+
+mysql_host = os.getenv("MYSQL_HOST")
+mysql_port = os.getenv("MYSQL_PORT")
+mysql_database = os.getenv("MYSQL_DATABASE")
+mysql_user = os.getenv("MYSQL_USER")
+mysql_password = os.getenv("MYSQL_PASSWORD")
+
+mysql_url = f"jdbc:mysql://{mysql_host}:{mysql_port}/{mysql_database}"
+mysql_properties = {
+    "user": mysql_user,
+    "password": mysql_password,
+    "driver": "com.mysql.cj.jdbc.Driver"
+}
+
+category_lookup = spark.read.jdbc(
+    url=mysql_url,
+    table="(SELECT DISTINCT hashtag, category FROM hashtags) AS lookup", # small DataFrame with just two columns: hashtag and category, one row per unique hashtag
+    properties=mysql_properties
+)
