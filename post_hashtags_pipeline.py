@@ -41,7 +41,8 @@ hashtags.cache()
 # Clean the variants (like ai!) before categorizing them
 hashtags_clean = hashtags \
   .withColumn("hashtag", regexp_replace(col("hashtag"), "[^a-zA-Z0-9_]", "")) \
-  .withColumn("hashtag", trim(regexp_replace(col("hashtag"), "(^_+|_+$)", "")))
+  .withColumn("hashtag", trim(regexp_replace(col("hashtag"), "(^_+|_+$)", ""))) \
+  .filter(col("hashtag") != "")
 
 mysql_host = os.getenv("MYSQL_HOST")
 mysql_port = os.getenv("MYSQL_PORT")
