@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lower, trim, regexp_replace, sum, first
-
+import csv
 from dotenv import load_dotenv
 import os
 load_dotenv()
@@ -72,6 +72,25 @@ FROM hashtags_view
 GROUP BY post_date
 ORDER BY post_date ASC
 """).show()
+
+# --- Additional analysis: most active days, ranked ---
+daily_activity_rows = spark.sql("""
+SELECT
+    post_date,
+    COUNT(hashtag) AS total_hashtags_used,
+    COUNT(DISTINCT hashtag) AS unique_hashtags
+FROM hashtags_view
+GROUP BY post_date
+ORDER BY total_hashtags_used DESC
+""").collect()
+
+with open("daily_activity.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["post_date", "total_hashtags_used", "unique_hashtags"])
+    for row in daily_activity_rows:
+        writer.writerow([row["post_date"], row["total_hashtags_used"], row["unique_hashtags"]])
+
+print(f"Exported {len(daily_activity_rows)} rows to daily_activity.csv (ranked by activity)")
 
 #  Categorization 
 # Clean the variants (like ai!) before categorizing them
@@ -154,45 +173,104 @@ ORDER BY category, post_date
 """).show(50)
 
 # --- Export CSVs for reporting and per-category plotting ---
-import csv
- 
 category_activity_rows = spark.sql("""
     SELECT category, post_date, SUM(post_count) AS total_activity
     FROM categorized_hashtags
     GROUP BY category, post_date
     ORDER BY category, post_date
 """).collect()
- 
+
 with open("category_activity.csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["category", "post_date", "total_activity"])
     for row in category_activity_rows:
         writer.writerow([row["category"], row["post_date"], row["total_activity"]])
- 
+
 print(f"Exported {len(category_activity_rows)} rows to category_activity.csv")
- 
+
+# --- Additional analysis: top category per day (including 'other') ---
+from collections import defaultdict
+
+activity_by_day = defaultdict(list)
+for row in category_activity_rows:
+    activity_by_day[row["post_date"]].append((row["category"], row["total_activity"]))
+
+top_category_rows = []
+for post_date, cats in activity_by_day.items():
+    top_cat, top_activity = max(cats, key=lambda x: x[1])
+    top_category_rows.append((post_date, top_cat, top_activity))
+
+top_category_rows.sort(key=lambda x: x[0])  # chronological order
+
+with open("top_category_per_day.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["post_date", "top_category", "activity_count"])
+    for post_date, top_cat, top_activity in top_category_rows:
+        writer.writerow([post_date, top_cat, top_activity])
+
+print(f"Exported {len(top_category_rows)} rows to top_category_per_day.csv")
+
 top_hashtags_rows = spark.sql("""
     SELECT hashtag, category, SUM(post_count) AS total_count
     FROM categorized_hashtags
     GROUP BY hashtag, category
     ORDER BY total_count DESC
 """).collect()
- 
+
 with open("top_hashtags.csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["hashtag", "category", "total_count"])
     for row in top_hashtags_rows:
         writer.writerow([row["hashtag"], row["category"], row["total_count"]])
- 
+
 print(f"Exported {len(top_hashtags_rows)} rows to top_hashtags.csv")
- 
-# --- Write to MySQL ---
+
+# --- MySQL connection details (needed by both the analysis write below and the main write later) ---
 mysql_url = f"jdbc:mysql://{os.getenv('MYSQL_HOST')}:{os.getenv('MYSQL_PORT')}/{os.getenv('MYSQL_DATABASE')}"
 mysql_properties = {
     "user": os.getenv("MYSQL_USER"),
     "password": os.getenv("MYSQL_PASSWORD"),
     "driver": "com.mysql.cj.jdbc.Driver"
 }
+
+# --- Additional analysis: top 3 categories per day (excluding 'other') ---
+from pyspark.sql import Window
+from pyspark.sql.functions import row_number, desc
+
+category_activity_df = spark.sql("""
+    SELECT category, post_date, SUM(post_count) AS total_activity
+    FROM categorized_hashtags
+    WHERE category != 'other'
+    GROUP BY category, post_date
+""")
+
+rank_window = Window.partitionBy("post_date").orderBy(desc("total_activity"))
+
+top3_per_day_df = category_activity_df \
+    .withColumn("rank", row_number().over(rank_window)) \
+    .filter(col("rank") <= 3) \
+    .orderBy("post_date", "rank")
+
+top3_per_day_df.show(30)
+
+# Export to CSV
+top3_rows = top3_per_day_df.collect()
+with open("top3_categories_per_day.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["post_date", "rank", "category", "total_activity"])
+    for row in top3_rows:
+        writer.writerow([row["post_date"], row["rank"], row["category"], row["total_activity"]])
+
+print(f"Exported {len(top3_rows)} rows to top3_categories_per_day.csv")
+
+# Write to a new MySQL table (separate from the main 'hashtags' table)
+top3_per_day_df.coalesce(1) \
+    .write \
+    .mode("overwrite") \
+    .option("truncate", "true") \
+    .jdbc(url=mysql_url, table="top3_categories_per_day", properties=mysql_properties)
+
+print("Wrote top3_categories_per_day to MySQL.")
 
 # Aggregate by (post_date, hashtag) to guarantee unique primary keys for MySQL
 final_df = daily_ranking_categorized \
@@ -202,7 +280,7 @@ final_df = daily_ranking_categorized \
         first("category").alias("category")  # Picks one category if a hashtag spans multiple
     )
 
-# Write to MySQL
+# --- Write to MySQL (main hashtags table) ---
 final_df.coalesce(1) \
     .write \
     .mode("overwrite") \
