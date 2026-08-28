@@ -42,7 +42,6 @@ hashtags.cache()
 hashtags_clean = hashtags \
   .withColumn("hashtag", regexp_replace(col("hashtag"), "[^a-zA-Z0-9_]", "")) \
   .withColumn("hashtag", trim(regexp_replace(col("hashtag"), "(^_+|_+$)", "")))
-hashtags_clean.createOrReplaceTempView("post_hashtags_clean")
 
 mysql_host = os.getenv("MYSQL_HOST")
 mysql_port = os.getenv("MYSQL_PORT")
