@@ -40,6 +40,33 @@
         th {
             background-color: #f2f2f2;
         }
+    
+        button.viewPostsBtn {
+            padding: 7px 12px;
+            cursor: pointer;
+        }
+
+        .post-card {
+            border: 1px solid #ddd;
+            padding: 16px;
+            margin: 12px 0;
+            border-radius: 6px;
+        }
+
+        .post-author {
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .post-date {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .post-text {
+            white-space: pre-wrap;
+            margin: 12px 0;
+        }
     </style>
 </head>
 
@@ -87,6 +114,7 @@
                 <th>Hashtag</th>
                 <th>Count</th>
                 <th>Date</th>
+                <th>Action</th>
             </tr>
         </thead>
 
@@ -98,11 +126,29 @@
                     <td>#<%= item.hashtag %></td>
                     <td><%= item.total_count %></td>
                     <td>-</td>
+                    <td>
+                        <button
+                            class="viewPostsBtn"
+                            data-hashtag="<%= item.hashtag %>">
+                            View Posts
+                        </button>
+                    </td>
                 </tr>
             <% }); %>
 
         </tbody>
     </table>
+
+    <hr style="margin-top: 50px;">
+
+    <h2 id="postsTitle">Matching Posts</h2>
+
+    <p id="postsMessage">
+        Click "View Posts" next to a hashtag to see matching Bluesky posts.
+    </p>
+
+    <div id="postResults"></div>
+
 
 
 
@@ -186,7 +232,7 @@
 
                 if (data.length === 0) {
                     results.innerHTML =
-                        "<tr><td colspan='4'>No results found.</td></tr>";
+                        "<tr><td colspan='5'>No results found.</td></tr>";
                     return;
                 }
 
@@ -207,6 +253,13 @@
                         <td>#${item.hashtag}</td>
                         <td>${item.total_count}</td>
                         <td>${date}</td>
+                        <td>
+                            <button
+                                class="viewPostsBtn"
+                                data-hashtag="${item.hashtag}">
+                                View Posts
+                            </button>
+                        </td>
                     `;
 
                     results.appendChild(row);
@@ -217,7 +270,7 @@
                 console.error(error);
 
                 results.innerHTML =
-                    "<tr><td colspan='4'>Error loading data.</td></tr>";
+                    "<tr><td colspan='5'>Error loading data.</td></tr>";
             }
         }
 
@@ -436,6 +489,151 @@
                 }
             );
         }
+
+
+
+        // ----------------------------
+        // Show Matching Posts
+        // ----------------------------
+
+        const postsTitle =
+            document.getElementById("postsTitle");
+
+        const postsMessage =
+            document.getElementById("postsMessage");
+
+        const postResults =
+            document.getElementById("postResults");
+
+
+        async function loadMatchingPosts(hashtag) {
+
+            const category = categorySelect.value;
+            const postDate = dateSelect.value;
+
+            let url =
+                "/api/posts?hashtag=" +
+                encodeURIComponent(hashtag) +
+                "&limit=10";
+
+            if (category) {
+                url += "&category=" +
+                    encodeURIComponent(category);
+            }
+
+            if (postDate) {
+                url += "&postDate=" +
+                    encodeURIComponent(postDate);
+            }
+
+            postsTitle.textContent =
+                "Posts for #" + hashtag;
+
+            postsMessage.textContent =
+                "Loading matching posts...";
+
+            postResults.innerHTML = "";
+
+            try {
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error("Failed to load posts");
+                }
+
+                postsMessage.textContent =
+                    data.length +
+                    " matching post(s) shown.";
+
+                if (data.length === 0) {
+                    postResults.innerHTML =
+                        "<p>No matching posts found.</p>";
+                    return;
+                }
+
+                data.forEach(item => {
+
+                    const card =
+                        document.createElement("div");
+
+                    card.className = "post-card";
+
+                    const author =
+                        document.createElement("div");
+
+                    author.className = "post-author";
+                    author.textContent =
+                        "@" + (item.author_handle || "unknown");
+
+                    const date =
+                        document.createElement("div");
+
+                    date.className = "post-date";
+                    date.textContent =
+                        item.post_date
+                            ? String(item.post_date).substring(0, 10)
+                            : "";
+
+                    const postText =
+                        document.createElement("div");
+
+                    postText.className = "post-text";
+                    postText.textContent =
+                        item.post_text || "";
+
+                    card.appendChild(author);
+                    card.appendChild(date);
+                    card.appendChild(postText);
+
+                    if (item.uri && item.author_handle) {
+
+                        const rkey =
+                            item.uri.split("/").pop();
+
+                        const link =
+                            document.createElement("a");
+
+                        link.href =
+                            "https://bsky.app/profile/" +
+                            encodeURIComponent(item.author_handle) +
+                            "/post/" +
+                            encodeURIComponent(rkey);
+
+                        link.target = "_blank";
+                        link.rel = "noopener noreferrer";
+                        link.textContent = "View on Bluesky";
+
+                        card.appendChild(link);
+                    }
+
+                    postResults.appendChild(card);
+                });
+
+            } catch(error) {
+
+                console.error(error);
+
+                postsMessage.textContent =
+                    "Error loading posts.";
+            }
+        }
+
+
+        results.addEventListener("click", function(event) {
+
+            const button =
+                event.target.closest(".viewPostsBtn");
+
+            if (!button) {
+                return;
+            }
+
+            loadMatchingPosts(
+                button.dataset.hashtag
+            );
+        });
 
     </script>
 
