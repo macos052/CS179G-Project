@@ -278,6 +278,11 @@ top3_per_day_df.coalesce(1) \
     .option("truncate", "true") \
     .jdbc(url=mysql_url, table="top3_categories_per_day", properties=mysql_properties)
 
+# Verify the top3_categories_per_day write succeeded
+verify_top3 = spark.read.jdbc(url=mysql_url, table="top3_categories_per_day", properties=mysql_properties)
+print(f"Rows in top3_categories_per_day table: {verify_top3.count()}")
+verify_top3.show(10)
+
 print("Wrote top3_categories_per_day to MySQL.")
 
 # Aggregate by (post_date, hashtag) to guarantee unique primary keys for MySQL
