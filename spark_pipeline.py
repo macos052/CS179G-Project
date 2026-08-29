@@ -164,6 +164,14 @@ FROM daily_ranking
 daily_ranking_categorized.createOrReplaceTempView("categorized_hashtags")
 daily_ranking_categorized.show(20)
 
+# Category that isnt other
+spark.sql("""
+SELECT hashtag, post_date, post_count, category 
+FROM hashtags 
+WHERE category != 'other' 
+LIMIT 10
+""")
+
 # Category activity across days
 spark.sql("""
 SELECT category, post_date, SUM(post_count) AS total_activity
