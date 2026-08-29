@@ -164,13 +164,13 @@ FROM daily_ranking
 daily_ranking_categorized.createOrReplaceTempView("categorized_hashtags")
 daily_ranking_categorized.show(20)
 
-# Category that isnt other
+# Sample of hashtags that matched a real category (not 'other')
 spark.sql("""
-SELECT hashtag, post_date, post_count, category 
-FROM hashtags 
-WHERE category != 'other' 
+SELECT hashtag, post_date, post_count, category
+FROM categorized_hashtags
+WHERE category != 'other'
 LIMIT 10
-""")
+""").show()
 
 # Category activity across days
 spark.sql("""
